@@ -8,7 +8,8 @@
 # AUTHORS and LICENSE files distributed with this source code, or
 # at https://www.sourcefabric.org/superdesk/license
 
-from collections import namedtuple
+from typing import NamedTuple
+
 from superdesk.resource import Resource, not_analyzed, not_indexed, not_enabled
 from .packages import LINKED_IN_PACKAGES, PACKAGE
 from eve.utils import config
@@ -24,27 +25,57 @@ ASSOCIATIONS = 'associations'
 
 
 #: item public states
-pub_status = ['usable', 'withheld', 'canceled']
-PUB_STATUS = namedtuple('PUBSTATUS', ['USABLE', 'HOLD', 'CANCELED'])(*pub_status)
+class PubStatuses(NamedTuple):
+    USABLE: str
+    HOLD: str
+    CANCELED: str
 
-ITEM_TYPE = 'type'
-content_type = ['text', 'preformatted', 'audio', 'video', 'picture', 'graphic', 'composite', 'event']
-CONTENT_TYPE = namedtuple('CONTENT_TYPE',
-                          ['TEXT', 'PREFORMATTED', 'AUDIO', 'VIDEO',
-                           'PICTURE', 'GRAPHIC', 'COMPOSITE', 'EVENT'])(*content_type)
+
+PUB_STATUS: PubStatuses = PubStatuses('usable', 'withheld', 'canceled')
+
+
+class ContentTypes(NamedTuple):
+    TEXT: str
+    PREFORMATTED: str
+    AUDIO: str
+    VIDEO: str
+    PICTURE: str
+    GRAPHIC: str
+    COMPOSITE: str
+    EVENT: str
+
+
+CONTENT_TYPE: ContentTypes = ContentTypes('text', 'preformatted', 'audio', 'video', 'picture', 'graphic', 'composite',
+                                          'event')
 
 MEDIA_TYPES = ('audio', 'video', 'picture', 'graphic')
-
+ITEM_TYPE = 'type'
 ITEM_STATE = 'state'
 ITEM_PRIORITY = 'priority'
 ITEM_URGENCY = 'urgency'
 
+
 #: item internal states
-content_state = ['draft', 'ingested', 'routed', 'fetched', 'submitted', 'in_progress', 'spiked',
-                 'published', 'killed', 'corrected', 'scheduled', 'recalled', 'unpublished']
-CONTENT_STATE = namedtuple('CONTENT_STATE', ['DRAFT', 'INGESTED', 'ROUTED', 'FETCHED', 'SUBMITTED', 'PROGRESS',
-                                             'SPIKED', 'PUBLISHED', 'KILLED', 'CORRECTED',
-                                             'SCHEDULED', 'RECALLED', 'UNPUBLISHED'])(*content_state)
+class ContentStates(NamedTuple):
+    DRAFT: str
+    INGESTED: str
+    ROUTED: str
+    FETCHED: str
+    SUBMITTED: str
+    PROGRESS: str
+    SPIKED: str
+    PUBLISHED: str
+    KILLED: str
+    CORRECTED: str
+    SCHEDULED: str
+    RECALLED: str
+    UNPUBLISHED: str
+
+
+CONTENT_STATE: ContentStates = ContentStates('draft', 'ingested', 'routed', 'fetched', 'submitted', 'in_progress',
+                                             'spiked',
+                                             'published', 'killed', 'corrected', 'scheduled', 'recalled', 'unpublished')
+
 PUBLISH_STATES = {
     CONTENT_STATE.PUBLISHED,
     CONTENT_STATE.SCHEDULED,
@@ -54,9 +85,14 @@ PUBLISH_STATES = {
     CONTENT_STATE.UNPUBLISHED,
 }
 
+
+class Formats(NamedTuple):
+    HTML: str
+    PRESERVED: str
+
+
 FORMAT = 'format'
-formats = ['HTML', 'preserved']
-FORMATS = namedtuple('FORMAT', ['HTML', 'PRESERVED'])(*formats)
+FORMATS: Formats = Formats('HTML', 'preserved')
 
 BYLINE = 'byline'
 SIGN_OFF = 'sign_off'
@@ -209,7 +245,7 @@ metadata_schema = {
     # Item Metadata
     ITEM_TYPE: {
         'type': 'string',
-        'allowed': content_type,
+        'allowed': tuple(CONTENT_TYPE),
         'default': 'text',
         'mapping': not_analyzed,
     },
@@ -298,18 +334,18 @@ metadata_schema = {
     # Related to state of an article
     ITEM_STATE: {
         'type': 'string',
-        'allowed': content_state,
+        'allowed': tuple(CONTENT_STATE),
         'mapping': not_analyzed,
     },
     # The previous state the item was in before for example being spiked, when un-spiked it will revert to this state
     'revert_state': {
         'type': 'string',
-        'allowed': content_state,
+        'allowed': tuple(CONTENT_STATE),
         'mapping': not_analyzed,
     },
     'pubstatus': {
         'type': 'string',
-        'allowed': pub_status,
+        'allowed': tuple(PUB_STATUS),
         'default': PUB_STATUS.USABLE,
         'mapping': not_analyzed,
         'nullable': True,
@@ -362,6 +398,29 @@ metadata_schema = {
         'type': 'list',
         'minlength': 1,
         'nullable': True,
+        'mapping': {
+            'dynamic': False,
+            'properties': {
+                'id': not_analyzed,
+                'refs': {
+                    'dynamic': False,
+                    'properties': {
+                        'idRef': not_analyzed,
+                        '_id': not_analyzed,
+                        'uri': not_analyzed,
+                        'guid': not_analyzed,
+                        'type': not_analyzed,
+                        'location': not_analyzed,
+                        'headline': {
+                            'type': 'string'
+                        },
+                        'slugline': {
+                            'type': 'string'
+                        },
+                    },
+                },
+            },
+        },
     },
     'deleted_groups': {
         'type': 'list',
@@ -390,6 +449,17 @@ metadata_schema = {
                 'state': {'type': 'string'},
                 'city_code': {'type': 'string'},
                 'country': {'type': 'string'},
+                'code': {'type': 'string'},
+                'scheme': {'type': 'string'},
+                'location': {
+                    'type': 'dict',
+                    'mapping': {'type': 'geo_point'},
+                    'nullable': True,
+                    'schema': {
+                        'lat': {'type': 'integer'},
+                        'lon': {'type': 'integer'},
+                    },
+                },
             }},
             'date': {'type': 'datetime', 'nullable': True},
             'source': {'type': 'string'},
@@ -507,6 +577,19 @@ metadata_schema = {
                 'feature_class': not_analyzed,
                 'location': {'type': 'geo_point'},
                 'rel': not_analyzed,
+            },
+        },
+    },
+
+    'person': {
+        'type': 'list',
+        'nullable': True,
+        'mapping': {
+            'type': 'object',
+            'dynamic': False,
+            'properties': {
+                'lastname': not_analyzed,
+                'firstname': not_analyzed,
             },
         },
     },
@@ -744,6 +827,36 @@ metadata_schema = {
     '_type': {'type': 'string', 'mapping': None},
     'operation': {'type': 'string'},
     'es_highlight': {'type': 'dict', 'allow_unknown': True, 'readonly': True},
+
+    # targeting fields
+    'target_regions': {
+        'type': 'list',
+        'nullable': True,
+        'schema': {
+            'type': 'dict',
+            'schema': {
+                'qcode': {'type': 'string'},
+                'name': {'type': 'string'},
+                'allow': {'type': 'boolean'}
+            }
+        }
+    },
+    'target_types': {
+        'type': 'list',
+        'nullable': True,
+        'schema': {
+            'type': 'dict',
+            'schema': {
+                'qcode': {'type': 'string'},
+                'name': {'type': 'string'},
+                'allow': {'type': 'boolean'}
+            }
+        }
+    },
+    'target_subscribers': {
+        'type': 'list',
+        'nullable': True
+    },
 }
 
 metadata_schema['lock_user']['versioned'] = False

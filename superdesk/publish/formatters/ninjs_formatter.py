@@ -33,6 +33,7 @@ import json
 import superdesk
 import logging
 import re
+from typing import Tuple
 
 from flask import current_app as app
 from eve.utils import config
@@ -97,10 +98,12 @@ class NINJSFormatter(Formatter):
     and ``type``. In the latest case the items are sent separately before the package item.
     """
 
-    direct_copy_properties = ('versioncreated', 'usageterms', 'language', 'headline', 'copyrightnotice',
-                              'urgency', 'pubstatus', 'mimetype', 'copyrightholder', 'ednote',
-                              'body_text', 'body_html', 'slugline', 'keywords',
-                              'firstcreated', 'firstpublished', 'source', 'extra', 'annotations')
+    direct_copy_properties: Tuple[str, ...] = (
+        'versioncreated', 'usageterms', 'language', 'headline', 'copyrightnotice',
+        'urgency', 'pubstatus', 'mimetype', 'copyrightholder', 'ednote',
+        'body_text', 'body_html', 'slugline', 'keywords',
+        'firstcreated', 'firstpublished', 'source', 'extra', 'annotations'
+    )
 
     rendition_properties = ('href', 'width', 'height', 'mimetype', 'poi', 'media')
     vidible_fields = {field: field for field in rendition_properties}
@@ -222,7 +225,7 @@ class NINJSFormatter(Formatter):
         if not ninjs.get('copyrightholder') and not ninjs.get('copyrightnotice') and not ninjs.get('usageterms'):
             ninjs.update(superdesk.get_resource_service('vocabularies').get_rightsinfo(article))
 
-        if 'genre' in article:
+        if article.get('genre'):
             ninjs['genre'] = self._get_genre(article)
 
         if article.get('flags', {}).get('marked_for_legal'):

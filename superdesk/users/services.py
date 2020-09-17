@@ -11,7 +11,7 @@
 import flask
 import logging
 from bson import ObjectId
-from flask import current_app as app
+from flask import current_app as app, json, request
 from eve.utils import config
 from superdesk.activity import add_activity, ACTIVITY_CREATE, ACTIVITY_UPDATE
 from superdesk.metadata.item import SIGN_OFF
@@ -24,6 +24,8 @@ from superdesk.privilege import get_privilege_list
 from superdesk.errors import SuperdeskApiError
 from superdesk.users.errors import UserInactiveError, UserNotRegisteredException
 from superdesk.notification import push_notification
+from superdesk.validation import ValidationError
+from superdesk.utils import ignorecase_query
 
 logger = logging.getLogger(__name__)
 
@@ -361,6 +363,25 @@ class UsersService(BaseService):
                 lookup['is_author'] = bool(int(is_author))
             else:
                 logger.warn('bad value of is_author argument ({value})'.format(value=is_author))
+
+        """filtering out inactive users and disabled users"""
+
+        args = req.args if req and req.args else {}
+
+        # Filtering inactive users
+        if not args.get('show_inactive'):
+            if lookup is not None:
+                lookup['is_active'] = True
+            else:
+                lookup = {'is_active': True}
+
+        # Filtering disabled users
+        if not args.get('show_disabled'):
+            if lookup is not None:
+                lookup['is_enabled'] = True
+            else:
+                lookup = {'is_enabled': True}
+
         return super().get(req, lookup)
 
     def get_users_by_user_type(self, user_type='user'):
@@ -490,3 +511,42 @@ class DBUsersService(UsersService):
 
         super().on_deleted(doc)
         get_resource_service('reset_user_password').remove_all_tokens_for_email(doc.get('email'))
+
+    def _process_external_data(self, _data, update=False):
+        data = _data.copy()
+        if data.get('role'):
+            role_name = data.pop('role')
+            role = get_resource_service('roles').find_one(req=None, name=ignorecase_query(role_name))
+            if role:
+                data['role'] = role['_id']
+        if data.get('desk') or app.config.get('USER_EXTERNAL_DESK'):
+            desk_name = data.pop('desk', None) or app.config.get('USER_EXTERNAL_DESK')
+            desk = get_resource_service('desks').find_one(req=None, name=ignorecase_query(desk_name))
+            if desk:
+                data['desk'] = desk['_id']
+        data['needs_activation'] = False
+        if update:
+            data.pop('email')
+            data.pop('username')
+        elif data.get('username'):
+            if app.config.get('USER_EXTERNAL_USERNAME_STRIP_DOMAIN'):
+                data['username'] = data['username'].split('@')[0]
+            data['username'] = data['username'].replace('@', '.')  # @ breaks mentioning
+        validator = self._validator()
+        if not validator.validate(data, update=update):
+            raise ValidationError(validator.errors)
+        return validator.normalized(data) if not update else data
+
+    def create_external_user(self, data):
+        docs = [self._process_external_data(data)]
+        self.on_create(docs)
+        self.create(docs)
+        for user in docs:
+            if user.get('desk'):
+                get_resource_service('desks').add_member(user['desk'], user['_id'])
+        return docs[0]
+
+    def update_external_user(self, _id, data):
+        orig = self.find_one(req=None, _id=ObjectId(_id))
+        updates = self._process_external_data(data, update=True)
+        self.system_update(ObjectId(_id), updates, orig)

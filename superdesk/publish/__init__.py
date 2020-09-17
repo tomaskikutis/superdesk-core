@@ -15,7 +15,7 @@ Items must be inserted to publish queue in order to get transmitted.
 """
 
 import logging
-from collections import namedtuple
+from typing import NamedTuple
 
 from superdesk.celery_app import celery
 from superdesk.publish.publish_content import PublishContent
@@ -25,16 +25,35 @@ logger = logging.getLogger(__name__)
 
 registered_transmitters = {}
 transmitter_errors = {}
+registered_transmitters_list = []
 
-subscriber_types = ['digital', 'wire', 'all']
-subscriber_media_types = ['media', 'non-media', 'both']
-SUBSCRIBER_TYPES = namedtuple('SUBSCRIBER_TYPES', ['DIGITAL', 'WIRE', 'ALL'])(*subscriber_types)
-SUBSCRIBER_MEDIA_TYPES = namedtuple('SUBSCRIBER_MEDIA_TYPES', ['MEDIA', 'NONMEDIA', 'BOTH'])(*subscriber_media_types)
+
+class SubscriberTypes(NamedTuple):
+    DIGITAL: str
+    WIRE: str
+    ALL: str
+
+
+SUBSCRIBER_TYPES: SubscriberTypes = SubscriberTypes('digital', 'wire', 'all')
+
+
+class SubscriberMediaTypes(NamedTuple):
+    MEDIA: str
+    NONMEDIA: str
+    BOTH: str
+
+
+SUBSCRIBER_MEDIA_TYPES: SubscriberMediaTypes = SubscriberMediaTypes('media', 'non-media', 'both')
 
 
 def register_transmitter(transmitter_type, transmitter, errors):
     registered_transmitters[transmitter_type] = transmitter
     transmitter_errors[transmitter_type] = dict(errors)
+    registered_transmitters_list.append({
+        'type': transmitter_type,
+        'name': transmitter.NAME or transmitter_type,
+        'config': getattr(transmitter, 'CONFIG', None),
+    })
 
 
 @celery.task(soft_time_limit=1800, expires=10)
@@ -69,3 +88,7 @@ def init_app(app):
         SubscriberTokenResource,
         SubscriberTokenService
     )
+
+    app.client_config.update({
+        'transmitter_types': registered_transmitters_list,
+    })

@@ -10,7 +10,7 @@
 
 import logging
 
-from flask import current_app as app, json
+from flask import current_app as app
 from cerberus import DocumentError
 from eve.endpoints import send_response
 from werkzeug.exceptions import HTTPException
@@ -171,6 +171,11 @@ class SuperdeskApiError(SuperdeskError):
     def notConfiguredError(cls, message=None, payload=None):
         default_message = "configuration is not done for this action"
         return SuperdeskApiError(status_code=500, message=message or default_message, payload=payload)
+
+    @classmethod
+    def proxyError(cls, message=None, payload=None):
+        default_message = "something went wrong with third party server"
+        return SuperdeskApiError(status_code=502, message=message or default_message, payload=payload)
 
     @classmethod
     def conflictError(cls, message=None, payload=None):
@@ -497,6 +502,8 @@ class IngestTwitterError(SuperdeskIngestError):
     _codes = {
         6100: "Twitter authentication failure",
         6200: "No Screen names specified",
+        6300: "Rate limit exceeded",
+        6400: "Unknown API error",
     }
 
     @classmethod
@@ -506,6 +513,14 @@ class IngestTwitterError(SuperdeskIngestError):
     @classmethod
     def TwitterNoScreenNamesError(cls, exception=None, provider=None):
         return IngestTwitterError(6200, exception, provider)
+
+    @classmethod
+    def TwitterRateLimitError(cls, exception=None, provider=None):
+        return IngestTwitterError(6300, exception, provider)
+
+    @classmethod
+    def TwitterAPIGeneralError(cls, exception=None, provider=None):
+        return IngestTwitterError(6400, exception, provider)
 
 
 class SuperdeskPublishError(SuperdeskError):
