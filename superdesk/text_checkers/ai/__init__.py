@@ -4,6 +4,7 @@
 # AUTHORS and LICENSE files distributed with this source code, or
 # at https://www.sourcefabric.org/superdesk/license
 
+from typing import Any
 from superdesk.resource import Resource
 from superdesk.services import BaseService
 from superdesk.errors import SuperdeskApiError
@@ -14,28 +15,33 @@ import superdesk
 AUTO_IMPORT = True
 
 #: main endpoint to interact with AI Services
-AI_SERVICE_ENDPOINT = 'ai'
+AI_SERVICE_ENDPOINT = "ai"
 
 #: endpoint to manipulate AI Services data
-AI_DATA_OP_ENDPOINT = 'ai_data_op'
+AI_DATA_OP_ENDPOINT = "ai_data_op"
 
 
 class AIResource(Resource):
     schema = {
-        'service': {
-            'type': 'string',
-            'required': True,
+        "service": {
+            "type": "string",
+            "required": True,
         },
-        'item_id': {
-            'type': 'string',
-            'required': True,
+        "item": {
+            "type": "dict",
+            "required": True,
+            "schema": {
+                "guid": {"type": "string", "required": True},
+                "abstract": {"type": "string", "required": False},
+                "language": {"type": "string", "required": True},
+                "headline": {"type": "string", "nullable": True},
+                "body_html": {"type": "string", "required": True},
+            },
         },
     }
-    datasource = {
-        'projection': {'analysis': 1}
-    }
+    datasource = {"projection": {"analysis": 1}}
     internal_resource = False
-    resource_methods = ['POST']
+    resource_methods = ["POST"]
     item_methods = []
 
 
@@ -49,7 +55,7 @@ class AIService(BaseService):
     key         explanation
     ==========  ===========
     service \*  name of the service to use
-    item_id \*  _id of the item in archive collection
+    item \*     item metadata to be analyzed
     ==========  ===========
 
     e.g. to get autotagging with iMatrics service:
@@ -58,7 +64,11 @@ class AIService(BaseService):
 
         {
             "service": "imatrics",
-            "item_id": "some_id"
+            "item": {
+                "guid": "some_id",
+                "headline": "item headline",
+                "body_html": "item content"
+            }
         }
 
     """
@@ -66,42 +76,40 @@ class AIService(BaseService):
     def create(self, docs, **kwargs):
         doc = docs[0]
         service = doc["service"]
-        item_id = doc.get('item_id')
+        item = doc["item"]
         try:
             service = registered_ai_services[service]
         except KeyError:
             raise SuperdeskApiError.notFoundError("{service} service can't be found".format(service=service))
 
-        analyzed_data = service.analyze(item_id)
+        analyzed_data = service.analyze(item)
         docs[0].update({"analysis": analyzed_data})
         return [0]
 
 
 class AIDataOpResource(Resource):
     schema = {
-        'service': {
-            'type': 'string',
-            'required': True,
+        "service": {
+            "type": "string",
+            "required": True,
         },
-        'operation': {
-            'type': 'string',
-            'required': True,
-            'allowed': ['search', 'create', 'delete'],
+        "operation": {
+            "type": "string",
+            "required": True,
+            "allowed": ["search", "create", "delete"],
         },
-        'data_name': {
-            'type': 'string',
-            'required': False,
+        "data_name": {
+            "type": "string",
+            "required": False,
         },
-        'data': {
-            'type': 'dict',
-            'required': True,
-        }
+        "data": {
+            "type": "dict",
+            "required": True,
+        },
     }
-    datasource = {
-        'projection': {'result': 1}
-    }
+    datasource = {"projection": {"result": 1}}
     internal_resource = False
-    resource_methods = ['POST']
+    resource_methods = ["POST"]
     item_methods = []
 
 
@@ -149,20 +157,20 @@ class AIDataOpService(BaseService):
         return [0]
 
 
-def init_app(app):
+def init_app(app) -> None:
     if AUTO_IMPORT:
         tools.import_services(app, __name__, AIServiceBase)
 
     allowed_service = list(registered_ai_services)
 
     endpoint_name = AI_SERVICE_ENDPOINT
-    service = AIService(endpoint_name, backend=superdesk.get_backend())
+    service: Any = AIService(endpoint_name, backend=superdesk.get_backend())
     AIResource.schema["service"]["allowed"] = allowed_service
     AIResource(endpoint_name, app=app, service=service)
-    superdesk.intrinsic_privilege(endpoint_name, method=['POST'])
+    superdesk.intrinsic_privilege(endpoint_name, method=["POST"])
 
     endpoint_name = AI_DATA_OP_ENDPOINT
     service = AIDataOpService(endpoint_name, backend=superdesk.get_backend())
     AIDataOpResource.schema["service"]["allowed"] = allowed_service
     AIDataOpResource(endpoint_name, app=app, service=service)
-    superdesk.intrinsic_privilege(endpoint_name, method=['POST'])
+    superdesk.intrinsic_privilege(endpoint_name, method=["POST"])

@@ -17,7 +17,6 @@ registered_ai_services = {}
 
 
 class AIServiceRegisterer(abc.ABCMeta):
-
     def __call__(cls, *args, **kwargs):
         instance = super().__call__(*args, **kwargs)
         name = instance.name
@@ -41,7 +40,7 @@ class AIServiceBase(metaclass=AIServiceRegisterer):
     """
 
     def __init__(self, app):
-        self.config = app.config
+        pass
 
     @property
     @abc.abstractmethod
@@ -53,6 +52,6 @@ class AIServiceBase(metaclass=AIServiceRegisterer):
         return self.name.title()
 
     @abc.abstractmethod
-    def analyze(self, item_id: str) -> dict:
+    def analyze(self, item: dict) -> dict:
         """Analyze article"""
         pass

@@ -15,7 +15,7 @@ Items must be inserted to publish queue in order to get transmitted.
 """
 
 import logging
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 from superdesk.celery_app import celery
 from superdesk.publish.publish_content import PublishContent
@@ -34,7 +34,7 @@ class SubscriberTypes(NamedTuple):
     ALL: str
 
 
-SUBSCRIBER_TYPES: SubscriberTypes = SubscriberTypes('digital', 'wire', 'all')
+SUBSCRIBER_TYPES: SubscriberTypes = SubscriberTypes("digital", "wire", "all")
 
 
 class SubscriberMediaTypes(NamedTuple):
@@ -43,17 +43,19 @@ class SubscriberMediaTypes(NamedTuple):
     BOTH: str
 
 
-SUBSCRIBER_MEDIA_TYPES: SubscriberMediaTypes = SubscriberMediaTypes('media', 'non-media', 'both')
+SUBSCRIBER_MEDIA_TYPES: SubscriberMediaTypes = SubscriberMediaTypes("media", "non-media", "both")
 
 
 def register_transmitter(transmitter_type, transmitter, errors):
     registered_transmitters[transmitter_type] = transmitter
     transmitter_errors[transmitter_type] = dict(errors)
-    registered_transmitters_list.append({
-        'type': transmitter_type,
-        'name': transmitter.NAME or transmitter_type,
-        'config': getattr(transmitter, 'CONFIG', None),
-    })
+    registered_transmitters_list.append(
+        {
+            "type": transmitter_type,
+            "name": transmitter.NAME or transmitter_type,
+            "config": getattr(transmitter, "CONFIG", None),
+        }
+    )
 
 
 @celery.task(soft_time_limit=1800, expires=10)
@@ -68,27 +70,26 @@ from superdesk.publish.publish_queue import PublishQueueResource, PublishQueueSe
 from superdesk.publish.subscriber_token import SubscriberTokenResource, SubscriberTokenService  # NOQA
 
 
-def init_app(app):
+def init_app(app) -> None:
     # XXX: we need to do imports for transmitters and formatters here
     #      so classes creation is done after PublishService is set
     #      this is a temporary workaround until a proper plugin system
     #      is implemented in Superdesk
     import superdesk.publish.transmitters  # NOQA
     import superdesk.publish.formatters  # NOQA
-    endpoint_name = 'subscribers'
-    service = SubscribersService(endpoint_name, backend=get_backend())
+
+    endpoint_name = "subscribers"
+    service: Any = SubscribersService(endpoint_name, backend=get_backend())
     SubscribersResource(endpoint_name, app=app, service=service)
 
-    endpoint_name = 'publish_queue'
+    endpoint_name = "publish_queue"
     service = PublishQueueService(endpoint_name, backend=get_backend())
     PublishQueueResource(endpoint_name, app=app, service=service)
 
-    superdesk.register_resource(
-        'subscriber_token',
-        SubscriberTokenResource,
-        SubscriberTokenService
-    )
+    superdesk.register_resource("subscriber_token", SubscriberTokenResource, SubscriberTokenService)
 
-    app.client_config.update({
-        'transmitter_types': registered_transmitters_list,
-    })
+    app.client_config.update(
+        {
+            "transmitter_types": registered_transmitters_list,
+        }
+    )
