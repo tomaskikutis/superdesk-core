@@ -20,7 +20,7 @@ import superdesk
 from superdesk.activity import ACTIVITY_EVENT, notify_and_add_activity
 from superdesk.celery_app import celery
 from superdesk.celery_task_utils import get_lock_id
-from superdesk.errors import ProviderError
+from superdesk.errors import ProviderError, SuperdeskApiError
 from superdesk.io import get_feeding_service
 from superdesk.io.registry import registered_feeding_services, registered_feed_parsers
 from superdesk.io.iptc import subject_codes
@@ -549,7 +549,7 @@ def ingest_items(items, provider, feeding_service, rule_set=None, routing_scheme
     return failed_items
 
 
-def ingest_item(item, provider, feeding_service, rule_set=None, routing_scheme=None):
+def ingest_item(item, provider, feeding_service, rule_set=None, routing_scheme=None, expiry=None):
     items_ids = []
     try:
         ingest_collection = get_ingest_collection(feeding_service, item)
@@ -576,9 +576,13 @@ def ingest_item(item, provider, feeding_service, rule_set=None, routing_scheme=N
                 item.pop("profile")
 
         set_default_state(item, CONTENT_STATE.INGESTED)
-        item["expiry"] = get_expiry_date(
-            provider.get("content_expiry") or app.config["INGEST_EXPIRY_MINUTES"], item.get("versioncreated")
-        )
+        item["expiry"] = (
+            get_expiry_date(
+                provider.get("content_expiry") or app.config["INGEST_EXPIRY_MINUTES"], item.get("versioncreated")
+            )
+            if not expiry
+            else expiry
+        )  # when fetching associated item set expiry to match parent
 
         if "anpa_category" in item:
             process_anpa_category(item, provider)
@@ -613,20 +617,40 @@ def ingest_item(item, provider, feeding_service, rule_set=None, routing_scheme=N
             assoc_name = assoc.get("headline") or assoc.get("slugline") or guid
             if guid:
                 ingested = ingest_service.find_one(req=None, guid=guid)
-                logger.info("assoc ingested before %s", assoc_name)
                 if ingested is not None:
+                    logger.info("assoc ingested before %s", assoc_name)
                     assoc["_id"] = ingested["_id"]
+                    # update expiry so assoc will stay as long as the item using it
+                    ingest_service.system_update(ingested["_id"], {"expiry": item["expiry"]}, ingested)
                     if is_new_version(assoc, ingested) and assoc.get("renditions"):  # new version
                         logger.info("new assoc version - re-transfer renditions for %s", assoc_name)
-                        transfer_renditions(assoc["renditions"])
+                        try:
+                            transfer_renditions(assoc["renditions"])
+                        except SuperdeskApiError:
+                            logger.exception(
+                                "failed to update associated item renditions",
+                                extra=dict(
+                                    guid=guid,
+                                    name=assoc_name,
+                                ),
+                            )
                     else:
                         logger.info("same/old version - use already fetched renditions for %s", assoc_name)
                         update_assoc_renditions(assoc, ingested)
                 else:  # there is no such item in the system - ingest it
                     if assoc.get("renditions") and has_system_renditions(assoc):  # all set, just download
-                        logger.info("new association  with system renditions - transfer %s", assoc_name)
-                        transfer_renditions(assoc["renditions"])
-                    status, ids = ingest_item(assoc, provider, feeding_service, rule_set)
+                        logger.info("new association with system renditions - transfer %s", assoc_name)
+                        try:
+                            transfer_renditions(assoc["renditions"])
+                        except SuperdeskApiError:
+                            logger.exception(
+                                "failed to download renditions",
+                                extra=dict(
+                                    guid=guid,
+                                    name=assoc_name,
+                                ),
+                            )
+                    status, ids = ingest_item(assoc, provider, feeding_service, rule_set, expiry=item["expiry"])
                     if status:
                         assoc["_id"] = ids[0]
                         items_ids.extend(ids)

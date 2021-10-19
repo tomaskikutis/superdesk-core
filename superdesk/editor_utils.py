@@ -10,6 +10,7 @@
 """This module contains tools to manage content for Superdesk editor"""
 
 import re
+from typing import Dict
 import uuid
 import logging
 import lxml.etree as etree
@@ -80,10 +81,14 @@ def set_field_content_state(item, field, content_state):
     item.setdefault("fields_meta", {}).update({field: {EDITOR_STATE: [content_state]}})
 
 
-def get_field_path(item, field):
-    keys = field.split(">")
-    if len(keys) == 2:
-        return item.setdefault("extra", {}), keys[1]
+def get_field_id(field: str) -> str:
+    return field.replace("extra>", "", 1) if field.startswith("extra>") else field
+
+
+def get_field_path(item, field: str):
+    field_id = get_field_id(field)
+    if field_id != field:
+        return item.setdefault("extra", {}), field_id
     return item, field
 
 
@@ -489,9 +494,9 @@ class DraftJSHTMLExporter:
             return DOM.create_element("span", attribs, props["children"])
         if type_.startswith("COMMENT"):
             # nothing to render for comments
-            pass
-        else:
-            logger.error("No style renderer for {type_!r}".format(type_=type_))
+            return
+        logger.info("No style renderer for {type_!r}".format(type_=type_))
+        return props["children"]
 
 
 class Editor3Content(EditorContent):
@@ -772,38 +777,39 @@ def filter_blocks(item, field, filter, is_html=True):
     editor.update_item()
 
 
-def generate_fields(item, fields=None, force=False):
+def generate_fields(item, fields=None, force=False, reload=False):
     """Generate item fields from editor states
 
     :param item: item containing Draft.js ContentState
     :param fields: fields to generate, None to generate all fields with a content state
-    :param force: force refreshing of content state from item field
+    :param force: force updating item from content state, item field value might be old
+    :param reload: force refreshing of content state from item field, content state might be old
     """
     if fields is None:
         fields = get_content_state_fields(item)
 
     for field in fields:
-        old_field = None
-        if CHECK_GENERATE_CONSISTENCY:
-            old_field = item.get(field)
-        editor = Editor3Content(item, field, is_html=is_html(field), reload=force)
+        client_value = get_field_value(item, field)
+        editor = Editor3Content(item, field, is_html=is_html(field), reload=reload)
         editor.update_item()
-        if CHECK_GENERATE_CONSISTENCY and not force:
-            if old_field is not None and old_field.strip() != item[field].strip():
+        if CHECK_GENERATE_CONSISTENCY and not force and client_value is not None:
+            server_value = get_field_value(item, field) or ""
+            if client_value.strip() != server_value.strip():
                 logger.warning(
                     "Generated HTML inconsistency between client and backend, we'll use client one",
                     extra=dict(
-                        client=old_field,
-                        backend=item[field],
+                        field=field,
+                        client=client_value,
+                        backend=server_value,
                         field_state=get_field_content_state(item, field),
                     ),
                 )
-                item[field] = old_field
+                set_field_value(item, field, client_value)
 
 
 def is_html(field) -> bool:
-    if "extra" in field:
-        field_id = field.split(">")[1]
+    field_id = get_field_id(field)
+    if field_id != field:
         field_options = superdesk.get_resource_service("vocabularies").get_field_options(field_id)
         return field_options.get("single") is not True
     return field not in TEXT_FIELDS
@@ -814,3 +820,22 @@ def render_fragment(elem) -> str:
         # client renders empty paragraph as `<p><br></p>`
         etree.SubElement(elem, "br", nsmap=None, attrib=None)
     return str(lxml_html.tostring(elem, encoding="unicode"))
+
+
+def is_empty_content_state(item: Dict, field: str) -> bool:
+    """Test if editor content state for given field is empty."""
+    content_state = get_field_content_state(item, field)
+    return content_state is None or not any([block.get("text", "").strip() for block in content_state["blocks"]])
+
+
+def copy_fields(source: Dict, dest: Dict, ignore_empty: bool = False):
+    """Copy editor fields state from source item to dest.
+
+    :param source: source item
+    :param dest: dest item
+    :param ignore_empty: if True it will only copy fields which are not empty.
+    """
+    if source.get("fields_meta"):
+        for field in source["fields_meta"]:
+            if ignore_empty is False or not is_empty_content_state(source, field):
+                dest.setdefault("fields_meta", {})[field] = source["fields_meta"][field].copy()
