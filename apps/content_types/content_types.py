@@ -42,6 +42,7 @@ EDITOR_ATTRIBUTES = (
     "preview",
     "enabled",
     "field_name",
+    "allow_toggling",
 )
 
 # cvs hardcoded in the app wich special use
