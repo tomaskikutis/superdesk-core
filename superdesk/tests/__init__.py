@@ -106,6 +106,7 @@ def update_config(conf):
     # misc
     conf["GEONAMES_USERNAME"] = "superdesk_dev"
     conf["PUBLISH_ASSOCIATED_ITEMS"] = True
+    conf["PAGINATION_LIMIT"] = conf["PAGINATION_DEFAULT"] = 200
 
     # auth server
     conf["AUTH_SERVER_SHARED_SECRET"] = "some secret"
@@ -385,7 +386,7 @@ def set_placeholder(context, name, value):
 
 
 def get_prefixed_url(current_app, endpoint):
-    if endpoint.startswith("http://"):
+    if endpoint.startswith("http://") or endpoint.startswith("https://"):
         return endpoint
 
     endpoint = endpoint.lstrip("/")

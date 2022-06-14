@@ -44,10 +44,11 @@ class ContentTypes(NamedTuple):
     GRAPHIC: str
     COMPOSITE: str
     EVENT: str
+    PLANNING: str
 
 
 CONTENT_TYPE: ContentTypes = ContentTypes(
-    "text", "preformatted", "audio", "video", "picture", "graphic", "composite", "event"
+    "text", "preformatted", "audio", "video", "picture", "graphic", "composite", "event", "planning"
 )
 
 MEDIA_TYPES = ("audio", "video", "picture", "graphic")
@@ -724,6 +725,7 @@ metadata_schema = {
         },
     },
     "target_subscribers": {"type": "list", "nullable": True},
+    "scope": {"type": "string", "scope": True, "mapping": not_analyzed},
 }
 
 metadata_schema["lock_user"]["versioned"] = False
