@@ -2,20 +2,28 @@ import superdesk
 
 from . import privileges, SCOPE
 
-from flask import current_app as app
 from eve.methods.common import document_link
-from superdesk.utc import utcnow, utc_to_local
 
 
 class FromTemplateResource(superdesk.Resource):
+    url = r'/shows/<regex("[a-f0-9]{24}"):show>/rundowns'
     schema = {
         "template": superdesk.Resource.rel("rundown_templates", required=True),
+        "airtime_date": {
+            "type": "string",
+            "required": True,
+        },
     }
 
     datasource = {
         "projection": {
             "_links": 1,
+            "show": 1,
+            "rundown_template": 1,
             "headline": 1,
+            "planned_duration": 1,
+            "airtime_time": 1,
+            "airtime_date": 1,
         },
     }
 
@@ -30,28 +38,18 @@ class FromTemplateService(superdesk.Service):
         for doc in docs:
             template = superdesk.get_resource_service("rundown_templates").find_one(req=None, _id=doc["template"])
             assert template
-            rundown = {"scope": SCOPE, "type": "composite", "particular_type": "rundown"}
 
-            if template.get("headline_template") and template.get("air_time"):
-                now = utcnow()
-                air_time = template.get("air_time").split(":")
-                date = utc_to_local(app.config["RUNDOWNS_TIMEZONE"], now)
-                date = date.replace(
-                    hour=int(air_time[0]),
-                    minute=int(air_time[1]),
-                    second=int(air_time[2]) if len(air_time) == 3 else 0,
-                    microsecond=0,
-                )
-                rundown["headline"] = " ".join(
-                    filter(
-                        bool,
-                        [
-                            template["headline_template"].get("prefix"),
-                            template["headline_template"].get("separator", ""),
-                            date.strftime(template["headline_template"].get("date_format", "")),
-                        ],
-                    )
-                )
+            rundown = {
+                "scope": SCOPE,
+                "type": "composite",
+                "particular_type": "rundown",
+                "show": template["show"],
+                "rundown_template": template["_id"],
+                "airtime_date": doc["airtime_date"],
+                "airtime_time": template.get("airtime_time", ""),
+                "headline": template.get("headline", ""),
+                "planned_duration": template.get("planned_duration", 0),
+            }
 
             superdesk.get_resource_service("archive").post([rundown])
             rundown["_links"] = {"self": document_link("archive", rundown["_id"])}

@@ -16,17 +16,25 @@ def init_app(app: SuperdeskEve) -> None:
         description=lazy_gettext("Rundowns management"),
     )
 
-    superdesk.register_resource("rundown_shows", shows.ShowsResource, shows.ShowsService, _app=app)
+    superdesk.register_resource("shows", shows.ShowsResource, shows.ShowsService, _app=app)
     superdesk.register_resource("rundown_templates", templates.TemplatesResource, templates.TemplatesService, _app=app)
     superdesk.register_resource(
-        "rundown_from_template", create.FromTemplateResource, create.FromTemplateService, backend=None, _app=app
+        "show_rundowns", create.FromTemplateResource, create.FromTemplateService, backend=None, _app=app
     )
 
     app.item_scope(
         SCOPE,
         schema={
-            "duration": {
+            "show": superdesk.Resource.rel("shows"),
+            "rundown_template": superdesk.Resource.rel("rundown_templates"),
+            "planned_duration": {
                 "type": "number",
+            },
+            "airtime_time": {
+                "type": "string",
+            },
+            "airtime_date": {
+                "type": "string",
             },
         },
     )
