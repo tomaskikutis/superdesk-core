@@ -89,6 +89,9 @@ class TemplatesResource(superdesk.Resource):
         "created_by": superdesk.Resource.rel("users", readonly=True),
         "updated_by": superdesk.Resource.rel("users", readonly=True),
         "groups": metadata_schema["groups"].copy(),
+        "rundown_items": {
+            "type" : "list"
+        },
     }
 
     privileges = {"POST": privileges.RUNDOWNS, "PATCH": privileges.RUNDOWNS, "DELETE": privileges.RUNDOWNS}
