@@ -25,6 +25,7 @@ class RundownItemsResource(superdesk.Resource):
         "additional_notes": superdesk.Resource.not_analyzed_field(),
         "live_captions": superdesk.Resource.not_analyzed_field(),
         "last_sentence": superdesk.Resource.not_analyzed_field(),
+        "fields_meta": superdesk.Resource.not_analyzed_field("dict"),
     }
 
     datasource = {
